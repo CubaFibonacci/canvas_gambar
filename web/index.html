@@ -1,0 +1,975 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>GestureCanvas - AI Air Canvas</title>
+  <!-- MediaPipe Hands & Camera Utils CDN -->
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
+
+  <style>
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      user-select: none;
+    }
+    body {
+      background: #0f1117;
+      color: #fff;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      overflow: hidden;
+      width: 100vw;
+      height: 100vh;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+    }
+
+    #app-container {
+      position: relative;
+      width: 100vw;
+      height: 100vh;
+      background: #0a0c10;
+      overflow: hidden;
+    }
+
+    /* Video feed (hidden element used for canvas processing) */
+    #webcam {
+      display: none;
+    }
+
+    /* Main display canvas */
+    #output-canvas {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      object-fit: contain;
+      background: #121418;
+    }
+
+    /* Left Sidebar: Color Palette & Rainbow Slider */
+    .panel-left {
+      position: absolute;
+      left: 0;
+      top: 0;
+      width: 100px;
+      height: 100%;
+      background: rgba(14, 16, 22, 0.88);
+      backdrop-filter: blur(8px);
+      border-right: 1px solid rgba(255, 255, 255, 0.08);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 15px 8px;
+      z-index: 10;
+      box-shadow: 4px 0 20px rgba(0, 0, 0, 0.5);
+    }
+
+    .panel-title {
+      font-size: 11px;
+      letter-spacing: 2px;
+      color: #7289da;
+      font-weight: 700;
+      margin-bottom: 12px;
+      text-transform: uppercase;
+    }
+
+    .color-grid {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 10px 8px;
+      margin-bottom: 16px;
+    }
+
+    .color-swatch {
+      width: 26px;
+      height: 26px;
+      border-radius: 50%;
+      cursor: pointer;
+      border: 2px solid transparent;
+      transition: transform 0.15s ease, border-color 0.15s ease;
+      box-shadow: 0 2px 5px rgba(0, 0, 0, 0.4);
+    }
+    .color-swatch:hover {
+      transform: scale(1.15);
+    }
+    .color-swatch.active {
+      border-color: #ffffff;
+      box-shadow: 0 0 10px rgba(255, 255, 255, 0.6);
+      transform: scale(1.12);
+    }
+
+    /* Rainbow Spectrum Slider */
+    .slider-container {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      margin-top: 4px;
+      position: relative;
+    }
+
+    .hue-slider {
+      -webkit-appearance: none;
+      writing-mode: vertical-lr;
+      direction: rtl;
+      width: 16px;
+      height: 150px;
+      border-radius: 8px;
+      background: linear-gradient(
+        to bottom,
+        #ff0000 0%,
+        #ffff00 17%,
+        #00ff00 33%,
+        #00ffff 50%,
+        #0000ff 67%,
+        #ff00ff 83%,
+        #ff0000 100%
+      );
+      outline: none;
+      cursor: pointer;
+      border: 1px solid rgba(255, 255, 255, 0.2);
+    }
+    .hue-slider::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      width: 22px;
+      height: 8px;
+      background: #ffffff;
+      border-radius: 4px;
+      cursor: pointer;
+      box-shadow: 0 0 6px rgba(0, 0, 0, 0.8);
+    }
+
+    .color-preview {
+      width: 38px;
+      height: 38px;
+      border-radius: 50%;
+      border: 3px solid #ffffff;
+      margin-top: 20px;
+      box-shadow: 0 0 12px rgba(0, 0, 0, 0.6);
+      transition: background-color 0.15s ease;
+    }
+
+    /* Right Sidebar: Action Buttons */
+    .panel-right {
+      position: absolute;
+      right: 0;
+      top: 0;
+      width: 105px;
+      height: 100%;
+      background: rgba(14, 16, 22, 0.88);
+      backdrop-filter: blur(8px);
+      border-left: 1px solid rgba(255, 255, 255, 0.08);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 14px 8px;
+      gap: 7px;
+      z-index: 10;
+      box-shadow: -4px 0 20px rgba(0, 0, 0, 0.5);
+    }
+
+    .btn {
+      width: 100%;
+      height: 34px;
+      background: #181b24;
+      color: #d2d7e2;
+      border: 1px solid #3c414d;
+      border-radius: 6px;
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 0.5px;
+      cursor: pointer;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      transition: all 0.15s ease;
+    }
+    .btn:hover {
+      background: #242936;
+      border-color: #555e70;
+      transform: translateY(-1px);
+    }
+    .btn:active {
+      transform: translateY(1px);
+    }
+
+    .btn.active-draw {
+      background: rgba(255, 200, 30, 0.18);
+      color: #ffd026;
+      border-color: #ffd026;
+      box-shadow: 0 0 8px rgba(255, 208, 38, 0.4);
+    }
+    .btn.active-erase {
+      background: rgba(255, 40, 40, 0.18);
+      color: #ff3b3b;
+      border-color: #ff3b3b;
+      box-shadow: 0 0 8px rgba(255, 59, 59, 0.4);
+    }
+    .btn.active-move {
+      background: rgba(0, 255, 120, 0.18);
+      color: #00ff78;
+      border-color: #00ff78;
+      box-shadow: 0 0 8px rgba(0, 255, 120, 0.4);
+    }
+    .btn.active-glow {
+      background: rgba(255, 255, 50, 0.18);
+      color: #ffff32;
+      border-color: #ffff32;
+      box-shadow: 0 0 10px rgba(255, 255, 50, 0.5);
+    }
+    .btn.active-mirror {
+      background: rgba(255, 100, 220, 0.18);
+      color: #ff64dc;
+      border-color: #ff64dc;
+      box-shadow: 0 0 10px rgba(255, 100, 220, 0.5);
+    }
+    .btn.active-fill {
+      background: rgba(100, 255, 255, 0.18);
+      color: #64ffff;
+      border-color: #64ffff;
+    }
+    .btn.active-rainbow {
+      background: linear-gradient(135deg, rgba(255,0,0,0.2), rgba(0,255,0,0.2), rgba(0,0,255,0.2));
+      color: #00e5ff;
+      border-color: #00e5ff;
+      box-shadow: 0 0 10px rgba(0, 229, 255, 0.5);
+    }
+
+    .size-indicator {
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      height: 18px;
+    }
+    .size-dot {
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: #ff3b3b;
+      box-shadow: 0 0 6px currentColor;
+    }
+
+    .btn-clear {
+      color: #ff4545;
+      border-color: rgba(255, 69, 69, 0.3);
+    }
+    .btn-save {
+      color: #2ed573;
+      border-color: rgba(46, 213, 115, 0.3);
+    }
+
+    /* Top HUD / Status Bar */
+    .top-hud {
+      position: absolute;
+      top: 15px;
+      left: 120px;
+      right: 125px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      pointer-events: none;
+      z-index: 10;
+    }
+
+    .fps-badge {
+      color: #00ff78;
+      font-size: 15px;
+      font-weight: 700;
+      font-family: monospace;
+      text-shadow: 0 0 8px rgba(0, 255, 120, 0.6);
+    }
+
+    .mode-badge {
+      font-size: 16px;
+      font-weight: 800;
+      letter-spacing: 1.5px;
+      padding: 6px 18px;
+      border-radius: 20px;
+      background: rgba(14, 16, 22, 0.7);
+      backdrop-filter: blur(6px);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      box-shadow: 0 4px 12px rgba(0,0,0,0.4);
+    }
+
+    .toast-msg {
+      position: absolute;
+      top: 70px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: rgba(18, 22, 30, 0.92);
+      border: 1px solid #00ff78;
+      color: #ffffff;
+      padding: 8px 24px;
+      border-radius: 24px;
+      font-size: 14px;
+      font-weight: 600;
+      box-shadow: 0 4px 20px rgba(0, 255, 120, 0.3);
+      z-index: 20;
+      opacity: 0;
+      transition: opacity 0.25s ease;
+      pointer-events: none;
+    }
+    .toast-msg.show {
+      opacity: 1;
+    }
+
+    /* Loading modal */
+    #loading-overlay {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: rgba(10, 12, 16, 0.95);
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+      z-index: 100;
+    }
+    .spinner {
+      width: 50px;
+      height: 50px;
+      border: 4px solid rgba(255, 255, 255, 0.1);
+      border-top-color: #00ff78;
+      border-radius: 50%;
+      animation: spin 1s infinite linear;
+      margin-bottom: 20px;
+    }
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+  </style>
+</head>
+<body>
+  <div id="app-container">
+    <video id="webcam" playsinline></video>
+    <canvas id="output-canvas"></canvas>
+
+    <!-- Top HUD -->
+    <div class="top-hud">
+      <div id="fps-display" class="fps-badge">FPS: 30</div>
+      <div id="mode-display" class="mode-badge" style="color: #ffd026;">[ DRAW MODE ]</div>
+      <div style="width: 70px;"></div>
+    </div>
+
+    <!-- Notification Toast -->
+    <div id="toast" class="toast-msg">Notification</div>
+
+    <!-- Left Sidebar: Palette & Slider -->
+    <div class="panel-left">
+      <div class="panel-title">COLOR</div>
+      <div class="color-grid" id="palette-container"></div>
+
+      <div class="slider-container">
+        <input type="range" id="hue-slider" class="hue-slider" min="0" max="360" value="0" />
+      </div>
+
+      <div class="color-preview" id="color-preview"></div>
+    </div>
+
+    <!-- Right Sidebar: Controls -->
+    <div class="panel-right">
+      <button class="btn active-draw" id="btn-draw">DRW</button>
+      <button class="btn" id="btn-erase">ERS</button>
+      <button class="btn" id="btn-move">MOV</button>
+      <button class="btn" id="btn-size-down">-</button>
+      <div class="size-indicator">
+        <div class="size-dot" id="size-dot"></div>
+      </div>
+      <button class="btn" id="btn-size-up">+</button>
+      <button class="btn" id="btn-glow">GLOW</button>
+      <button class="btn" id="btn-mirror">MRR</button>
+      <button class="btn" id="btn-fill">FLL</button>
+      <button class="btn" id="btn-rainbow">RNBW</button>
+      <button class="btn" id="btn-undo">UNDO (0)</button>
+      <button class="btn btn-clear" id="btn-clear">CLEAR</button>
+      <button class="btn btn-save" id="btn-save">SAVE</button>
+    </div>
+
+    <!-- Loading Overlay -->
+    <div id="loading-overlay">
+      <div class="spinner"></div>
+      <h2>Memulai GestureCanvas...</h2>
+      <p style="color: #8a94a6; margin-top: 8px;">Izinkan akses webcam pada browser Anda</p>
+    </div>
+  </div>
+
+  <script>
+    // ---------------- APP STATE & CONFIG ----------------
+    const PALETTE_HEX = [
+      "#ffc81e", "#ff8c00",
+      "#f01e28", "#ff32b4",
+      "#c81eb4", "#5a1eb4",
+      "#1ee6ff", "#00b4b4",
+      "#f0f01e", "#32ff64",
+      "#32b432", "#145014",
+      "#ffffff", "#b4b4b4",
+      "#505050", "#141414"
+    ];
+
+    let currentMode = "DRAW"; // DRAW, ERASE, MOVE
+    let currentColor = PALETTE_HEX[2]; // Default: Crimson Red
+    let brushThickness = 6;
+    let glowMode = false;
+    let mirrorMode = false;
+    let fillMode = false;
+    let rainbowMode = false;
+    let rainbowHue = 0;
+
+    let strokes = []; // Array of { points: [{x, y}], color, thickness, glow, mirror, rainbow, hues }
+    let currentStroke = null;
+    let selectedStroke = null;
+    let lastMovePt = null;
+
+    // Canvas elements
+    const videoElement = document.getElementById("webcam");
+    const canvasElement = document.getElementById("output-canvas");
+    const canvasCtx = canvasElement.getContext("2d");
+
+    // HUD Elements
+    const fpsDisplay = document.getElementById("fps-display");
+    const modeDisplay = document.getElementById("mode-display");
+    const colorPreview = document.getElementById("color-preview");
+    const sizeDot = document.getElementById("size-dot");
+    const toast = document.getElementById("toast");
+    const hueSlider = document.getElementById("hue-slider");
+    const loadingOverlay = document.getElementById("loading-overlay");
+
+    // Button references
+    const btnDraw = document.getElementById("btn-draw");
+    const btnErase = document.getElementById("btn-erase");
+    const btnMove = document.getElementById("btn-move");
+    const btnSizeDown = document.getElementById("btn-size-down");
+    const btnSizeUp = document.getElementById("btn-size-up");
+    const btnGlow = document.getElementById("btn-glow");
+    const btnMirror = document.getElementById("btn-mirror");
+    const btnFill = document.getElementById("btn-fill");
+    const btnRainbow = document.getElementById("btn-rainbow");
+    const btnUndo = document.getElementById("btn-undo");
+    const btnClear = document.getElementById("btn-clear");
+    const btnSave = document.getElementById("btn-save");
+
+    // FPS calculation
+    let lastTime = performance.now();
+    let frameCount = 0;
+    let currentFps = 30;
+
+    function showToast(msg) {
+      toast.textContent = msg;
+      toast.classList.add("show");
+      setTimeout(() => toast.classList.remove("show"), 2000);
+    }
+
+    function updatePreview() {
+      colorPreview.style.backgroundColor = currentColor;
+      sizeDot.style.backgroundColor = currentColor;
+      sizeDot.style.width = Math.max(4, Math.min(22, brushThickness)) + "px";
+      sizeDot.style.height = Math.max(4, Math.min(22, brushThickness)) + "px";
+      btnUndo.textContent = `UNDO (${strokes.length})`;
+    }
+
+    // ---------------- PALETTE INITIALIZATION ----------------
+    const paletteContainer = document.getElementById("palette-container");
+    PALETTE_HEX.forEach((hex, idx) => {
+      const swatch = document.createElement("div");
+      swatch.className = "color-swatch" + (idx === 2 ? " active" : "");
+      swatch.style.backgroundColor = hex;
+      swatch.addEventListener("click", () => {
+        document.querySelectorAll(".color-swatch").forEach(s => s.classList.remove("active"));
+        swatch.classList.add("active");
+        currentColor = hex;
+        rainbowMode = false;
+        btnRainbow.classList.remove("active-rainbow");
+        updatePreview();
+        showToast(`Warna #${idx + 1}`);
+      });
+      paletteContainer.appendChild(swatch);
+    });
+
+    // Rainbow Hue Slider
+    hueSlider.addEventListener("input", (e) => {
+      document.querySelectorAll(".color-swatch").forEach(s => s.classList.remove("active"));
+      const h = e.target.value;
+      currentColor = `hsl(${h}, 100%, 50%)`;
+      rainbowMode = false;
+      btnRainbow.classList.remove("active-rainbow");
+      updatePreview();
+    });
+
+    // ---------------- TOOLBAR EVENT LISTENERS ----------------
+    function setMode(mode) {
+      currentMode = mode;
+      btnDraw.className = "btn" + (mode === "DRAW" ? " active-draw" : "");
+      btnErase.className = "btn" + (mode === "ERASE" ? " active-erase" : "");
+      btnMove.className = "btn" + (mode === "MOVE" ? " active-move" : "");
+
+      if (mode === "DRAW") {
+        modeDisplay.textContent = "[ DRAW MODE ]";
+        modeDisplay.style.color = "#ffd026";
+      } else if (mode === "ERASE") {
+        modeDisplay.textContent = "[ ERASE MODE ]";
+        modeDisplay.style.color = "#ff3b3b";
+      } else if (mode === "MOVE") {
+        modeDisplay.textContent = "[ MOVE MODE ]";
+        modeDisplay.style.color = "#00ff78";
+      }
+      showToast(`Mode: ${mode}`);
+    }
+
+    btnDraw.addEventListener("click", () => setMode("DRAW"));
+    btnErase.addEventListener("click", () => setMode("ERASE"));
+    btnMove.addEventListener("click", () => setMode("MOVE"));
+
+    btnSizeDown.addEventListener("click", () => {
+      brushThickness = Math.max(2, brushThickness - 2);
+      updatePreview();
+      showToast(`Ukuran: ${brushThickness}px`);
+    });
+
+    btnSizeUp.addEventListener("click", () => {
+      brushThickness = Math.min(40, brushThickness + 2);
+      updatePreview();
+      showToast(`Ukuran: ${brushThickness}px`);
+    });
+
+    btnGlow.addEventListener("click", () => {
+      glowMode = !glowMode;
+      btnGlow.classList.toggle("active-glow", glowMode);
+      showToast(`Neon Glow: ${glowMode ? "ON" : "OFF"}`);
+    });
+
+    btnMirror.addEventListener("click", () => {
+      mirrorMode = !mirrorMode;
+      btnMirror.classList.toggle("active-mirror", mirrorMode);
+      showToast(`Mirror: ${mirrorMode ? "ON" : "OFF"}`);
+    });
+
+    btnFill.addEventListener("click", () => {
+      fillMode = !fillMode;
+      btnFill.classList.toggle("active-fill", fillMode);
+      showToast(`Dark Canvas: ${fillMode ? "ON" : "OFF"}`);
+    });
+
+    btnRainbow.addEventListener("click", () => {
+      rainbowMode = !rainbowMode;
+      btnRainbow.classList.toggle("active-rainbow", rainbowMode);
+      showToast(`Rainbow Brush: ${rainbowMode ? "ON" : "OFF"}`);
+    });
+
+    btnUndo.addEventListener("click", () => {
+      if (strokes.length > 0) {
+        strokes.pop();
+        updatePreview();
+        showToast(`Undo (Tersisa: ${strokes.length})`);
+      }
+    });
+
+    btnClear.addEventListener("click", () => {
+      strokes = [];
+      currentStroke = null;
+      updatePreview();
+      showToast("Kanvas Dibersihkan!");
+    });
+
+    btnSave.addEventListener("click", () => {
+      const link = document.createElement("a");
+      link.download = `GestureCanvas_${new Date().toISOString().replace(/[:.]/g, "-")}.png`;
+      link.href = canvasElement.toDataURL("image/png");
+      link.click();
+      showToast("Tersimpan ke Unduhan!");
+    });
+
+    // ---------------- MEDIAPIPE HANDS SETUP ----------------
+    function resizeCanvas() {
+      canvasElement.width = window.innerWidth;
+      canvasElement.height = window.innerHeight;
+    }
+    window.addEventListener("resize", resizeCanvas);
+    resizeCanvas();
+    updatePreview();
+
+    const hands = new Hands({
+      locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`
+    });
+
+    hands.setOptions({
+      maxNumHands: 2,
+      modelComplexity: 1,
+      minDetectionConfidence: 0.6,
+      minTrackingConfidence: 0.6
+    });
+
+    hands.onResults(onResults);
+
+    const camera = new Camera(videoElement, {
+      onFrame: async () => {
+        await hands.send({ image: videoElement });
+      },
+      width: 1280,
+      height: 720
+    });
+
+    camera.start().then(() => {
+      loadingOverlay.style.display = "none";
+      showToast("Webcam Siap! Mulai Menggambar.");
+    }).catch((err) => {
+      console.error(err);
+      loadingOverlay.innerHTML = `
+        <h2 style="color: #ff4545;">Webcam Tidak Ditemukan / Ditolak</h2>
+        <p style="color: #a0a6b5; margin-top: 8px;">Gunakan mouse untuk menggambar langsung di kanvas!</p>
+        <button class="btn" style="margin-top: 15px; width: 160px;" onclick="loadingOverlay.style.display='none'">Lanjut Mode Mouse</button>
+      `;
+    });
+
+    // ---------------- GESTURE PROCESSING & RENDERING ----------------
+    function onResults(results) {
+      // Calculate FPS
+      frameCount++;
+      const now = performance.now();
+      if (now - lastTime >= 1000) {
+        currentFps = Math.round((frameCount * 1000) / (now - lastTime));
+        fpsDisplay.textContent = `FPS: ${currentFps}`;
+        frameCount = 0;
+        lastTime = now;
+      }
+
+      const w = canvasElement.width;
+      const h = canvasElement.height;
+
+      canvasCtx.save();
+      canvasCtx.clearRect(0, 0, w, h);
+
+      // 1. Render Video Feed (Mirrored)
+      canvasCtx.translate(w, 0);
+      canvasCtx.scale(-1, 1);
+
+      if (fillMode) {
+        // Dark blackboard mode
+        canvasCtx.fillStyle = "#12141a";
+        canvasCtx.fillRect(0, 0, w, h);
+        canvasCtx.globalAlpha = 0.22;
+        canvasCtx.drawImage(results.image, 0, 0, w, h);
+        canvasCtx.globalAlpha = 1.0;
+      } else {
+        canvasCtx.drawImage(results.image, 0, 0, w, h);
+      }
+      canvasCtx.restore();
+
+      // 2. Render Drawn Strokes
+      renderStrokes(canvasCtx, w, h);
+
+      // 3. Process Hand Landmarks
+      if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
+        for (const lms of results.multiHandLandmarks) {
+          // Flip landmark X because canvas is mirrored
+          const normLms = lms.map(p => ({ x: (1.0 - p.x) * w, y: p.y * h, z: p.z }));
+
+          // Draw Cyber Silver Skeleton
+          drawCyberSkeleton(canvasCtx, normLms);
+
+          // Detect Gesture
+          const gesture = detectGesture(normLms);
+          const indexTip = normLms[8];
+          const thumbTip = normLms[4];
+
+          handleGesture(gesture, indexTip, thumbTip, w, h);
+        }
+      } else {
+        if (currentStroke) {
+          endStroke();
+        }
+        selectedStroke = null;
+        lastMovePt = null;
+      }
+    }
+
+    function detectGesture(lms) {
+      // Fingers up check (Tip.y < Pip.y)
+      const indexUp = lms[8].y < lms[6].y;
+      const middleUp = lms[12].y < lms[10].y;
+      const ringUp = lms[16].y < lms[14].y;
+      const pinkyUp = lms[20].y < lms[18].y;
+
+      const pinchDist = Math.hypot(lms[8].x - lms[4].x, lms[8].y - lms[4].y);
+      if (pinchDist < 38) return "PINCH";
+
+      // 1 Finger Up (Index) -> DRAW
+      if (indexUp && !middleUp && !ringUp && !pinkyUp) return "DRAW";
+
+      // 2 Fingers Up (Index + Middle) -> SELECT / HOVER
+      if (indexUp && middleUp && !ringUp && !pinkyUp) return "SELECT";
+
+      // Palm
+      if (indexUp && middleUp && ringUp && pinkyUp) return "PALM";
+
+      return "IDLE";
+    }
+
+    function handleGesture(gesture, indexTip, thumbTip, w, h) {
+      const ix = indexTip.x;
+      const iy = indexTip.y;
+
+      // Check if over UI sidebars
+      const inLeftUI = (ix < 110);
+      const inRightUI = (ix > w - 115);
+
+      // Draw Cursor
+      canvasCtx.beginPath();
+      canvasCtx.arc(ix, iy, 8, 0, Math.PI * 2);
+      canvasCtx.strokeStyle = inLeftUI || inRightUI ? "#00e5ff" : currentColor;
+      canvasCtx.lineWidth = 2;
+      canvasCtx.stroke();
+
+      if (inLeftUI || inRightUI) {
+        if (currentStroke) endStroke();
+        return;
+      }
+
+      if (currentMode === "DRAW") {
+        if (gesture === "DRAW") {
+          startStroke(ix, iy);
+          continueStroke(ix, iy);
+        } else {
+          endStroke();
+        }
+      } else if (currentMode === "ERASE") {
+        // Draw Eraser Circle
+        canvasCtx.beginPath();
+        canvasCtx.arc(ix, iy, 30, 0, Math.PI * 2);
+        canvasCtx.strokeStyle = "rgba(255, 60, 60, 0.8)";
+        canvasCtx.lineWidth = 2;
+        canvasCtx.stroke();
+
+        if (gesture === "DRAW" || gesture === "SELECT" || gesture === "PINCH") {
+          eraseStrokes(ix, iy, 30);
+        }
+      } else if (currentMode === "MOVE") {
+        // Draw Move Crosshair
+        canvasCtx.strokeStyle = "#00ff78";
+        canvasCtx.lineWidth = 2;
+        canvasCtx.beginPath();
+        canvasCtx.moveTo(ix - 12, iy);
+        canvasCtx.lineTo(ix + 12, iy);
+        canvasCtx.moveTo(ix, iy - 12);
+        canvasCtx.lineTo(ix, iy + 12);
+        canvasCtx.stroke();
+
+        if (gesture === "PINCH") {
+          const px = (ix + thumbTip.x) / 2;
+          const py = (iy + thumbTip.y) / 2;
+          if (!selectedStroke) {
+            startMove(px, py);
+          } else {
+            continueMove(px, py);
+          }
+        } else {
+          selectedStroke = null;
+          lastMovePt = null;
+        }
+      }
+    }
+
+    // ---------------- STROKE MANAGEMENT ----------------
+    function startStroke(x, y) {
+      if (!currentStroke) {
+        currentStroke = {
+          points: [{ x, y }],
+          color: currentColor,
+          thickness: brushThickness,
+          glow: glowMode,
+          mirror: mirrorMode,
+          rainbow: rainbowMode,
+          hues: [rainbowHue]
+        };
+      }
+    }
+
+    function continueStroke(x, y) {
+      if (currentStroke) {
+        const pts = currentStroke.points;
+        const lastPt = pts[pts.length - 1];
+        if (Math.hypot(x - lastPt.x, y - lastPt.y) > 2) {
+          if (rainbowMode) {
+            rainbowHue = (rainbowHue + 4) % 360;
+            currentStroke.hues.push(rainbowHue);
+          }
+          pts.push({ x, y });
+        }
+      }
+    }
+
+    function endStroke() {
+      if (currentStroke && currentStroke.points.length > 1) {
+        strokes.push(currentStroke);
+        updatePreview();
+      }
+      currentStroke = null;
+    }
+
+    function eraseStrokes(ex, ey, radius) {
+      strokes = strokes.filter(s => {
+        return !s.points.some(p => Math.hypot(p.x - ex, p.y - ey) < radius);
+      });
+      updatePreview();
+    }
+
+    function startMove(px, py) {
+      let minDist = 60;
+      selectedStroke = null;
+      for (const s of strokes) {
+        for (const p of s.points) {
+          const d = Math.hypot(p.x - px, p.y - py);
+          if (d < minDist) {
+            minDist = d;
+            selectedStroke = s;
+            break;
+          }
+        }
+      }
+      lastMovePt = { x: px, y: py };
+    }
+
+    function continueMove(px, py) {
+      if (lastMovePt) {
+        const dx = px - lastMovePt.x;
+        const dy = py - lastMovePt.y;
+        if (selectedStroke) {
+          selectedStroke.points.forEach(p => {
+            p.x += dx;
+            p.y += dy;
+          });
+        } else {
+          strokes.forEach(s => s.points.forEach(p => {
+            p.x += dx;
+            p.y += dy;
+          }));
+        }
+        lastMovePt = { x: px, y: py };
+      }
+    }
+
+    // ---------------- RENDERING ----------------
+    function renderStrokes(ctx, w, h) {
+      const all = [...strokes];
+      if (currentStroke) all.push(currentStroke);
+
+      all.forEach(st => {
+        const pts = st.points;
+        if (pts.length < 2) return;
+
+        // Glow bloom effect
+        if (st.glow) {
+          ctx.save();
+          ctx.shadowBlur = 18;
+          ctx.shadowColor = st.color;
+          ctx.lineCap = "round";
+          ctx.lineJoin = "round";
+          ctx.lineWidth = st.thickness + 4;
+
+          renderPath(ctx, pts, st, w);
+          ctx.restore();
+        }
+
+        // Main line
+        ctx.save();
+        ctx.lineCap = "round";
+        ctx.lineJoin = "round";
+        ctx.lineWidth = st.thickness;
+        renderPath(ctx, pts, st, w);
+        ctx.restore();
+      });
+    }
+
+    function renderPath(ctx, pts, st, w) {
+      for (let i = 0; i < pts.length - 1; i++) {
+        const p1 = pts[i];
+        const p2 = pts[i + 1];
+
+        ctx.beginPath();
+        ctx.moveTo(p1.x, p1.y);
+        ctx.lineTo(p2.x, p2.y);
+
+        ctx.strokeStyle = st.rainbow ? `hsl(${st.hues[i] || 0}, 100%, 50%)` : st.color;
+        ctx.stroke();
+
+        if (st.mirror) {
+          ctx.beginPath();
+          ctx.moveTo(w - p1.x, p1.y);
+          ctx.lineTo(w - p2.x, p2.y);
+          ctx.stroke();
+        }
+      }
+    }
+
+    function drawCyberSkeleton(ctx, lms) {
+      const connections = [
+        [0, 1], [1, 2], [2, 3], [3, 4],
+        [0, 5], [5, 6], [6, 7], [7, 8],
+        [0, 9], [9, 10], [10, 11], [11, 12],
+        [0, 13], [13, 14], [14, 15], [15, 16],
+        [0, 17], [17, 18], [18, 19], [19, 20],
+        [5, 9], [9, 13], [13, 17],
+        [2, 5], [6, 10], [10, 14], [14, 18]
+      ];
+
+      ctx.save();
+      ctx.strokeStyle = "rgba(220, 225, 235, 0.7)";
+      ctx.lineWidth = 1;
+
+      for (const [a, b] of connections) {
+        ctx.beginPath();
+        ctx.moveTo(lms[a].x, lms[a].y);
+        ctx.lineTo(lms[b].x, lms[b].y);
+        ctx.stroke();
+      }
+
+      ctx.fillStyle = "#ffffff";
+      for (const lm of lms) {
+        ctx.beginPath();
+        ctx.arc(lm.x, lm.y, 2, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      ctx.restore();
+    }
+
+    // ---------------- MOUSE DRAWING FALLBACK ----------------
+    let isMouseDown = false;
+    canvasElement.addEventListener("mousedown", (e) => {
+      isMouseDown = true;
+      if (currentMode === "DRAW") {
+        startStroke(e.clientX, e.clientY);
+      } else if (currentMode === "ERASE") {
+        eraseStrokes(e.clientX, e.clientY, 30);
+      } else if (currentMode === "MOVE") {
+        startMove(e.clientX, e.clientY);
+      }
+    });
+
+    canvasElement.addEventListener("mousemove", (e) => {
+      if (isMouseDown) {
+        if (currentMode === "DRAW") {
+          continueStroke(e.clientX, e.clientY);
+        } else if (currentMode === "ERASE") {
+          eraseStrokes(e.clientX, e.clientY, 30);
+        } else if (currentMode === "MOVE") {
+          continueMove(e.clientX, e.clientY);
+        }
+      }
+    });
+
+    window.addEventListener("mouseup", () => {
+      if (isMouseDown) {
+        isMouseDown = false;
+        if (currentMode === "DRAW") endStroke();
+        selectedStroke = null;
+        lastMovePt = null;
+      }
+    });
+  </script>
+</body>
+</html>
