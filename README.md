@@ -100,8 +100,8 @@ python main.py
 ## 📖 Tutorial Cara Menggunakan
 
 ### 1. Setup Posisi & Kamera
-1. Pastikan ruangan memiliki **pencahayaan yang cukup** agar kamera dapat mendeteksi tangan dengan jelas.
-2. Duduk berjarak sekitar **0.5 – 1.5 meter** dari webcam.
+1. Pastikan ruang memiliki **pencahayaan yang cukup** agar kamera dapat mendeteksi tangan dengan jelas.
+2. Duduk berjarak sekitar **0.5 – 1.5 meter yaa** dari webcam.
 3. Arahkan telapak tangan ke depan kamera sampai muncul **kerangka kawat silver (hand landmark)** di layar.
 
 ---
